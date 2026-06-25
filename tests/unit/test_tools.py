@@ -43,8 +43,11 @@ def temp_vault(tmp_path, monkeypatch):
 def test_list_vault_notes():
     result = list_vault_notes()
     assert result["status"] == "success"
+    assert "vault_path" in result
     assert "notes" in result
+    assert "total_files" in result
     assert len(result["notes"]) == 3
+    assert result["total_files"] == 3
     assert "Agent Architectures.md" in result["notes"]
     assert "Chocolate Chip Cookies.md" in result["notes"]
 
@@ -81,3 +84,33 @@ def test_move_note():
     vault_path = Path(os.environ["OBSIDIAN_VAULT_PATH"])
     assert not (vault_path / "Chocolate Chip Cookies.md").exists()
     assert (vault_path / "Cooking/Chocolate Chip Cookies.md").is_file()
+
+
+def test_set_vault_path(tmp_path):
+    from app.tools import set_vault_path
+    # An already-existing directory should be accepted without needing to create it.
+    result = set_vault_path(str(tmp_path))
+    assert result["status"] == "success"
+    assert "successfully changed to" in result["message"]
+
+
+def test_set_vault_path_new_subdir(tmp_path):
+    from app.tools import set_vault_path
+    # A path that doesn't exist yet inside a writable parent should be created.
+    new_dir = tmp_path / "new_vault_subdir"
+    assert not new_dir.exists()
+    result = set_vault_path(str(new_dir))
+    assert result["status"] == "success"
+    assert new_dir.is_dir()
+
+
+def test_set_vault_path_invalid(tmp_path):
+    from app.tools import set_vault_path
+    # Create a dummy file to use as an invalid vault path (file, not directory).
+    file_path = tmp_path / "dummy_file.txt"
+    file_path.write_text("Hello World", encoding="utf-8")
+
+    result = set_vault_path(str(file_path))
+    assert result["status"] == "error"
+    assert "is a file, not a directory" in result["message"]
+    assert "Current vault path:" in result["message"]

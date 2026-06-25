@@ -13,6 +13,7 @@
 # limitations under the License.
 import os
 
+import dotenv
 import google.auth
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
@@ -21,6 +22,9 @@ from google.cloud import logging as google_cloud_logging
 from app.app_utils.telemetry import setup_telemetry
 from app.app_utils.typing import Feedback
 
+# Load environment variables from .env file
+dotenv.load_dotenv()
+
 setup_telemetry()
 import logging
 
@@ -28,17 +32,23 @@ try:
     _, project_id = google.auth.default()
     logging_client = google_cloud_logging.Client()
     logger = logging_client.logger(__name__)
+    has_gcp_credentials = True
 except Exception:
     project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "mock-project-id")
     logging.basicConfig(level=logging.INFO)
     py_logger = logging.getLogger(__name__)
+
     # Provide a mock for structured logging used in endpoints
     class MockLogger:
         def __init__(self, logger_obj):
             self.logger_obj = logger_obj
+
         def log_struct(self, info: dict, severity: str = "INFO"):
             self.logger_obj.info(f"[{severity}] {info}")
+
     logger = MockLogger(py_logger)
+    has_gcp_credentials = False
+
 allow_origins = (
     os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
 )
@@ -52,13 +62,21 @@ session_service_uri = None
 
 artifact_service_uri = f"gs://{logs_bucket_name}" if logs_bucket_name else None
 
+# Disable cloud telemetry if we are using Google AI Studio key or have no GCP credentials
+otel_to_cloud = (
+    has_gcp_credentials
+    and os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "True") == "True"
+)
+if os.environ.get("GOOGLE_API_KEY"):
+    otel_to_cloud = False
+
 app: FastAPI = get_fast_api_app(
     agents_dir=AGENT_DIR,
     web=True,
     artifact_service_uri=artifact_service_uri,
     allow_origins=allow_origins,
     session_service_uri=session_service_uri,
-    otel_to_cloud=True,
+    otel_to_cloud=otel_to_cloud,
 )
 app.title = "obsidian-organizer"
 app.description = "API for interacting with the Agent obsidian-organizer"
