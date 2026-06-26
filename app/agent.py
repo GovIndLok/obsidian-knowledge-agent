@@ -31,30 +31,13 @@ from google.adk.models import Gemini
 from google.genai import types
 from google.adk.plugins.base_plugin import BasePlugin
 
-# Load environment variables from .env file
-dotenv.load_dotenv()
-
-# Detect Google AI Studio (Gemini API) vs Vertex AI
-if os.environ.get("GOOGLE_API_KEY"):
-    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
-else:
-    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
-
-# Disable progressive SSE streaming feature
-os.environ["ADK_DISABLE_PROGRESSIVE_SSE_STREAMING"] = "true"
-
-try:
-    _, project_id = google.auth.default()
-except Exception:
-    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "mock-project-id")
-
-os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
-os.environ["GOOGLE_CLOUD_LOCATION"] = "global"
+from .config import setup_env
+setup_env()
 
 from .tools import (
     list_vault_notes,
     read_note,
-    write_note,
+    update_note,
     create_vault_directory,
     move_note,
     set_vault_path,
@@ -63,12 +46,13 @@ from .tools import (
 ORGANIZER_INSTRUCTION = """You are an Obsidian vault organization expert.
 Your goal is to intelligently organize scattered markdown (.md) files in the user's vault.
 
-To achieve this:
+When the user asks you a question or gives a command, use the appropriate tools to fulfill their specific request (e.g. just list notes if they ask to list them).
+Only proceed with the full organization process if they ask you to organize the vault or perform a broad task.
+
+When organizing the vault, follow this process:
 1. Scan the vault using `list_vault_notes` to see all available files.
    - The response includes `vault_path` (the directory that was actually scanned), `notes` (the .md files found), and `total_files` (all files including non-.md).
    - Always tell the user which `vault_path` was scanned.
-   - If there are only a few notes present (e.g., less than 10), list them in your response so the user knows what notes were found. If there are many notes, do not list them all to avoid cluttering the output, but proceed to use them.
-   - Proceed with reading and organizing the notes automatically after scanning. Do not stop to wait for user confirmation or input unless you encounter a critical error.
    - If `notes` is empty but `total_files` > 0, tell the user how many files were found and that none are .md, then ask if they use a different extension.
    - If both `notes` and `total_files` are 0, tell the user the vault appears empty or the path may be wrong, and suggest using `set_vault_path` to correct it.
 2. Read the content of the notes using `read_note` to understand their context.
@@ -93,29 +77,45 @@ Whenever any tool returns `"status": "error"`, you MUST:
 Example response when `set_vault_path` fails:
 "I wasn't able to switch to that vault. The error was: <message from tool>. Your current active vault is still: <current_path>. Could you double-check the path and try again?"
 
-Report your actions and final folder layout clearly to the user.
+IMPORTANT: After making tool calls, always respond to the user with a text message summarizing the results. If you are asked to list notes, list them in text and stop. If you are asked to organize, summarize your actions after finishing.
 """
 
 
 class RateLimiterPlugin(BasePlugin):
-    """Enforces requests-per-minute (RPM) rate limits on model requests using spacing delays."""
+    """Enforces requests-per-minute (RPM) rate limits on model requests using a token bucket."""
 
-    def __init__(self, rpm: int = 15):
+    def __init__(self, rpm: int = 15, burst: int = 5):
         super().__init__(name="rate_limiter_plugin")
-        self.delay = 60.0 / rpm
-        self.last_call_time = 0.0
+        self.rpm = rpm
+        self.capacity = burst
+        self.tokens = float(burst)
+        self.last_refill = time.time()
         self.lock = asyncio.Lock()
 
     async def before_model_callback(self, *, callback_context, llm_request) -> None:
         async with self.lock:
             now = time.time()
-            elapsed = now - self.last_call_time
-            sleep_time = self.delay - elapsed
-            if sleep_time > 0:
+            elapsed = now - self.last_refill
+            # Refill rate: rpm / 60.0 tokens per second
+            self.tokens = min(self.capacity, self.tokens + elapsed * (self.rpm / 60.0))
+            self.last_refill = now
+
+            if self.tokens < 1.0:
+                # Calculate sleep time needed to get at least 1.0 token
+                tokens_needed = 1.0 - self.tokens
+                sleep_time = tokens_needed / (self.rpm / 60.0)
                 await asyncio.sleep(sleep_time)
-            self.last_call_time = time.time()
+                # Refill again after sleep
+                now = time.time()
+                elapsed = now - self.last_refill
+                self.tokens = min(self.capacity, self.tokens + elapsed * (self.rpm / 60.0))
+                self.last_refill = now
+
+            self.tokens -= 1.0
         return None
 
+
+rate_limiter = RateLimiterPlugin(rpm=15)
 
 root_agent = Agent(
     name="obsidian_organizer_agent",
@@ -127,15 +127,15 @@ root_agent = Agent(
     tools=[
         list_vault_notes,
         read_note,
-        write_note,
+        update_note,
         create_vault_directory,
         move_note,
         set_vault_path,
     ],
+    before_model_callback=rate_limiter.before_model_callback,
 )
 
 app = App(
     root_agent=root_agent,
     name="app",
-    plugins=[RateLimiterPlugin(rpm=15)],
 )

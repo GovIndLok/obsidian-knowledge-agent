@@ -19,7 +19,7 @@ from pathlib import Path
 from google.adk.tools import ToolContext
 
 
-def _get_vault_path(tool_context: ToolContext = None) -> Path:
+def _get_vault_path(tool_context: ToolContext | None = None) -> Path:
     """Helper to get the configured vault path from session state or environment variables."""
     default_path_str = os.environ.get(
         "OBSIDIAN_VAULT_PATH", "/home/gov03/project/obsidian-organizer/vault"
@@ -33,22 +33,15 @@ def _get_vault_path(tool_context: ToolContext = None) -> Path:
         path_str = default_path_str
 
     vault_path = Path(path_str).resolve()
-    try:
-        if vault_path.exists():
-            # Path already exists — just validate it is a directory.
-            if not vault_path.is_dir():
-                raise ValueError("Path exists but is not a directory.")
-        else:
-            # Path doesn't exist — attempt to create it (may fail on read-only mounts).
-            vault_path.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        raise ValueError(
-            f"Vault path '{path_str}' is invalid. Current valid vault path: '{default_path_str}'. Details: {e!s}"
-        )
+    if not vault_path.exists():
+        raise ValueError(f"Vault path '{vault_path}' does not exist.")
+    if not vault_path.is_dir():
+        raise ValueError(f"Vault path '{vault_path}' exists but is not a directory.")
+    
     return vault_path
 
 
-def _safe_resolve(relative_path: str, tool_context: ToolContext = None) -> Path:
+def _safe_resolve(relative_path: str, tool_context: ToolContext | None = None) -> Path:
     """Helper to safely resolve a path within the vault, preventing directory traversal."""
     vault_path = _get_vault_path(tool_context)
     resolved_path = (vault_path / relative_path).resolve()
@@ -59,7 +52,7 @@ def _safe_resolve(relative_path: str, tool_context: ToolContext = None) -> Path:
     return resolved_path
 
 
-def set_vault_path(new_path: str, tool_context: ToolContext = None) -> dict:
+def set_vault_path(new_path: str, tool_context: ToolContext | None = None) -> dict:
     """Sets the active Obsidian vault directory path for the current session.
 
     Use this tool when the user requests to point to a new vault or change the active vault path.
@@ -132,7 +125,7 @@ def set_vault_path(new_path: str, tool_context: ToolContext = None) -> dict:
         }
 
 
-def list_vault_notes(tool_context: ToolContext = None) -> dict:
+def list_vault_notes(tool_context: ToolContext | None = None) -> dict:
     """Lists all markdown files (.md) in the Obsidian vault recursively.
 
     Skips known Obsidian config/system folders (.obsidian, .trash, .git).
@@ -175,7 +168,7 @@ def list_vault_notes(tool_context: ToolContext = None) -> dict:
 
 
 
-def read_note(note_path: str, tool_context: ToolContext = None) -> dict:
+def read_note(note_path: str, tool_context: ToolContext | None = None) -> dict:
     """Reads the text content of a specific note file inside the vault.
 
     Args:
@@ -197,28 +190,35 @@ def read_note(note_path: str, tool_context: ToolContext = None) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-def write_note(note_path: str, content: str, tool_context: ToolContext = None) -> dict:
-    """Creates a new note or overwrites/updates an existing note with new content.
+def update_note(note_path: str, find_text: str, replace_text: str, tool_context: ToolContext | None = None) -> dict:
+    """Updates an existing note by finding and replacing specific text.
+    Useful for modifying frontmatter or inserting wikilinks without rewriting the entire file.
 
     Args:
-        note_path: The relative path of the note file to write (e.g., 'topic/Note.md').
-        content: The complete markdown content to write to the file.
+        note_path: The relative path of the note file (e.g., 'topic/Note.md').
+        find_text: The exact text to find in the note.
+        replace_text: The new text to replace it with.
 
     Returns:
         A dict with 'status' indicating success or failure.
     """
     try:
         target_path = _safe_resolve(note_path, tool_context)
-        # Ensure parent directories exist
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-
-        target_path.write_text(content, encoding="utf-8")
+        if not target_path.exists():
+            return {"status": "error", "message": f"Note not found: {note_path}"}
+        
+        content = target_path.read_text(encoding="utf-8")
+        if find_text not in content:
+            return {"status": "error", "message": "The specified find_text was not found in the note."}
+            
+        new_content = content.replace(find_text, replace_text, 1)
+        target_path.write_text(new_content, encoding="utf-8")
         return {"status": "success", "note_path": note_path}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-def create_vault_directory(folder_name: str, tool_context: ToolContext = None) -> dict:
+def create_vault_directory(folder_name: str, tool_context: ToolContext | None = None) -> dict:
     """Creates a new subdirectory inside the vault to establish hierarchical folders.
 
     Args:
@@ -236,9 +236,9 @@ def create_vault_directory(folder_name: str, tool_context: ToolContext = None) -
 
 
 def move_note(
-    note_path: str, destination_folder: str, tool_context: ToolContext = None
+    note_path: str, destination_folder: str, tool_context: ToolContext | None = None
 ) -> dict:
-    """Moves a note to a different folder inside the vault.
+    """Moves a note to a different folder inside the vault and updates wikilinks.
 
     Args:
         note_path: The relative path of the note file to move (e.g., 'Note.md').
@@ -248,23 +248,47 @@ def move_note(
         A dict with 'status' indicating success or failure.
     """
     try:
+        vault_path = _get_vault_path(tool_context)
         source_path = _safe_resolve(note_path, tool_context)
         dest_folder_path = _safe_resolve(destination_folder, tool_context)
 
         if not source_path.exists():
             return {"status": "error", "message": f"Source note not found: {note_path}"}
 
-        # Create destination folder if it doesn't exist
-        dest_folder_path.mkdir(parents=True, exist_ok=True)
         dest_file_path = dest_folder_path / source_path.name
 
+        # Prevent silent overwrite on filename collision
+        if dest_file_path.exists():
+            return {"status": "error", "message": f"Destination file already exists: {dest_file_path.relative_to(vault_path)}"}
+
+        # Create destination folder if it doesn't exist
+        dest_folder_path.mkdir(parents=True, exist_ok=True)
+
         shutil.move(str(source_path), str(dest_file_path))
+        
+        # Update wikilinks
+        old_rel_path = str(source_path.relative_to(vault_path))
+        new_rel_path = str(dest_file_path.relative_to(vault_path))
+        
+        old_full = Path(old_rel_path).with_suffix("").as_posix()
+        new_full = Path(new_rel_path).with_suffix("").as_posix()
+        
+        for root, dirs, files in os.walk(vault_path):
+            if ".obsidian" in dirs: dirs.remove(".obsidian")
+            if ".git" in dirs: dirs.remove(".git")
+            for file in files:
+                if file.endswith(".md"):
+                    fpath = Path(root) / file
+                    content = fpath.read_text(encoding="utf-8")
+                    updated_content = content.replace(f"[[{old_full}]]", f"[[{new_full}]]")
+                    updated_content = updated_content.replace(f"[[{old_full}|", f"[[{new_full}|")
+                    if content != updated_content:
+                        fpath.write_text(updated_content, encoding="utf-8")
+
         return {
             "status": "success",
             "source": note_path,
-            "destination": str(
-                dest_file_path.relative_to(_get_vault_path(tool_context))
-            ),
+            "destination": new_rel_path,
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}

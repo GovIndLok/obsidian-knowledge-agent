@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import pytest
 
-from app.tools import list_vault_notes, read_note, write_note, create_vault_directory, move_note
+from app.tools import list_vault_notes, read_note, update_note, create_vault_directory, move_note
 
 
 @pytest.fixture(autouse=True)
@@ -59,8 +59,9 @@ def test_read_note():
     assert "Flour" in result["content"]
 
 
-def test_write_note():
-    write_result = write_note("New Note.md", "# New Content")
+def test_update_note(tmp_path):
+    (tmp_path / "New Note.md").write_text("# Old Content", encoding="utf-8")
+    write_result = update_note("New Note.md", "Old Content", "New Content")
     assert write_result["status"] == "success"
 
     read_result = read_note("New Note.md")
@@ -114,3 +115,9 @@ def test_set_vault_path_invalid(tmp_path):
     assert result["status"] == "error"
     assert "is a file, not a directory" in result["message"]
     assert "Current vault path:" in result["message"]
+
+
+def test_path_traversal(tmp_path):
+    result = read_note("../../../etc/passwd")
+    assert result["status"] == "error"
+    assert "Path traversal detected" in result["message"]

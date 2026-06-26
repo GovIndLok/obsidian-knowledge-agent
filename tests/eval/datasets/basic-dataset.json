@@ -13,6 +13,20 @@
         "role": "user",
         "parts": [{"text": "Organize the vault by extracting/applying tags, linking related notes, and grouping them into appropriate subfolders."}]
       }
+    },
+    {
+      "eval_case_id": "create_and_move",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Create a new directory called 'Archived' and move all notes about cooking there."}]
+      }
+    },
+    {
+      "eval_case_id": "add_frontmatter",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Update all my notes to have YAML frontmatter with a 'status: reviewed' tag."}]
+      }
     }
   ]
 }

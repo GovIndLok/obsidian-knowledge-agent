@@ -22,8 +22,8 @@ from google.cloud import logging as google_cloud_logging
 from app.app_utils.telemetry import setup_telemetry
 from app.app_utils.typing import Feedback
 
-# Load environment variables from .env file
-dotenv.load_dotenv()
+from app.config import setup_env
+setup_env()
 
 setup_telemetry()
 import logging
