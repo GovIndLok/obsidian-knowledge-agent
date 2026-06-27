@@ -57,7 +57,7 @@ def set_vault_path(new_path: str, tool_context: ToolContext | None = None) -> di
 
     Use this tool when the user requests to point to a new vault or change the active vault path.
     The directory must already exist on disk (e.g. a mounted Obsidian vault). If it does not
-    exist, the tool will attempt to create it — but this may fail on read-only or restricted mounts.
+    exist, the tool will return an error informing the user.
 
     Args:
         new_path: The absolute directory path of the new Obsidian vault.
@@ -75,39 +75,25 @@ def set_vault_path(new_path: str, tool_context: ToolContext | None = None) -> di
     try:
         path = Path(new_path).resolve()
 
-        if path.exists():
-            # Path already exists on disk — validate it is a directory.
-            if not path.is_dir():
-                return {
-                    "status": "error",
-                    "message": (
-                        f"'{new_path}' exists but is a file, not a directory. "
-                        f"Current vault path: '{current_path}'."
-                    ),
-                }
-        else:
-            # Path doesn't exist — try to create it.
-            # This will fail on read-only or restricted mounts.
-            try:
-                path.mkdir(parents=True, exist_ok=True)
-            except PermissionError:
-                return {
-                    "status": "error",
-                    "message": (
-                        f"Cannot access '{new_path}': directory does not exist and "
-                        f"permission was denied when trying to create it. "
-                        f"Make sure the path already exists and is accessible. "
-                        f"Current vault path: '{current_path}'."
-                    ),
-                }
-            except OSError as e:
-                return {
-                    "status": "error",
-                    "message": (
-                        f"Cannot create '{new_path}': {e.strerror}. "
-                        f"Current vault path: '{current_path}'."
-                    ),
-                }
+        if not path.exists():
+            return {
+                "status": "error",
+                "message": (
+                    f"The specified vault path '{new_path}' does not exist. "
+                    f"Please ensure the directory is created before pointing the agent to it. "
+                    f"Current vault path: '{current_path}'."
+                ),
+            }
+
+        # Path exists — validate it is a directory.
+        if not path.is_dir():
+            return {
+                "status": "error",
+                "message": (
+                    f"'{new_path}' exists but is a file, not a directory. "
+                    f"Current vault path: '{current_path}'."
+                ),
+            }
 
         if tool_context:
             tool_context.state["vault_path"] = str(path)
@@ -115,6 +101,7 @@ def set_vault_path(new_path: str, tool_context: ToolContext | None = None) -> di
             "status": "success",
             "message": f"Vault path successfully changed to '{path!s}'.",
         }
+
     except Exception as e:
         return {
             "status": "error",

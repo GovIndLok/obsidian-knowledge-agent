@@ -97,12 +97,14 @@ def test_set_vault_path(tmp_path):
 
 def test_set_vault_path_new_subdir(tmp_path):
     from app.tools import set_vault_path
-    # A path that doesn't exist yet inside a writable parent should be created.
+    # A path that doesn't exist should return an error and not be created.
     new_dir = tmp_path / "new_vault_subdir"
     assert not new_dir.exists()
     result = set_vault_path(str(new_dir))
-    assert result["status"] == "success"
-    assert new_dir.is_dir()
+    assert result["status"] == "error"
+    assert "does not exist" in result["message"]
+    assert not new_dir.exists()
+
 
 
 def test_set_vault_path_invalid(tmp_path):

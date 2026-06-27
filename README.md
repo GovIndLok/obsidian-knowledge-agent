@@ -1,86 +1,73 @@
-# obsidian-organizer
+# Obsidian Organizer Agent
 
-Simple ReAct agent
-Agent generated with `agents-cli` version `0.5.0`
+An AI-powered ReAct agent designed to automatically organize your Obsidian markdown vaults. It analyzes notes, adds structured tags, creates folder hierarchies, and connects related notes via wikilinks.
 
-## Project Structure
+## Architecture
+
+This project is built using the **Google Agent Development Kit (ADK)** and managed via the `agents-cli`. 
+
+### Key Components
+
+- **Agent Framework**: Uses ADK's `Agent` and `App` classes to implement a ReAct loop.
+- **LLM**: Powered by Gemini (configured to use `gemma-4-26b-a4b-it` by default).
+- **Tools**: The agent interacts with the file system using specialized tools:
+  - `list_vault_notes`, `read_note`, `update_note`, `create_vault_directory`, `move_note`, `set_vault_path`
+- **Rate Limiting**: Includes a custom `RateLimiterPlugin` that uses a token bucket algorithm to enforce requests-per-minute limits.
 
 ```
 obsidian-organizer/
-├── app/         # Core agent code
-│   ├── agent.py               # Main agent logic
-│   └── app_utils/             # App utilities and helpers
-├── tests/                     # Unit, integration, and load tests
-├── GEMINI.md                  # AI-assisted development guide
-└── pyproject.toml             # Project dependencies
+├── app/
+│   ├── agent.py               # Main agent logic and initialization
+│   ├── config.py              # Environment configuration
+│   └── tools.py               # File system interaction tools
+├── tests/                     # Unit and integration tests
+├── pyproject.toml             # Project dependencies (managed by uv)
+└── agents-cli-manifest.yaml   # CLI configuration
 ```
 
-> 💡 **Tip:** Use [Gemini CLI](https://github.com/google-gemini/gemini-cli) for AI-assisted development - project context is pre-configured in `GEMINI.md`.
+## Setup & Running on Another System
 
-## Requirements
+### Prerequisites
 
-Before you begin, ensure you have:
-- **uv**: Python package manager (used for all dependency management in this project) - [Install](https://docs.astral.sh/uv/getting-started/installation/) ([add packages](https://docs.astral.sh/uv/concepts/dependencies/) with `uv add <package>`)
-- **agents-cli**: Agents CLI - Install with `uv tool install google-agents-cli`
-- **Google Cloud SDK**: For GCP services - [Install](https://cloud.google.com/sdk/docs/install)
+1. **Python Package Manager (`uv`)**: We use `uv` for lightning-fast dependency management.
+   - Install `uv`: `curl -LsSf https://astral.sh/uv/install.sh | sh` (or follow [official docs](https://docs.astral.sh/uv/getting-started/installation/))
+2. **Google Agents CLI**:
+   - Install globally: `uv tool install google-agents-cli`
+3. **Google Cloud Auth** (Optional, if using GCP models): 
+   - Install the `gcloud` CLI and run `gcloud auth application-default login`.
 
+### Installation
 
-## Quick Start
+1. **Clone the repository**:
+   ```bash
+   git clone <GITHUB_URL_PLACEHOLDER>
+   cd obsidian-organizer
+   ```
 
-Install `agents-cli` and its skills if not already installed:
+2. **Setup the environment**:
+   Install all required dependencies:
+   ```bash
+   agents-cli install
+   ```
+   *(This creates a `.venv` using `uv` and installs packages from `pyproject.toml`)*
 
-```bash
-uvx google-agents-cli setup
-```
+3. **Configure Environment Variables**:
+   Create a `.env` file or set environment variables directly if needed (e.g., API keys, default vault paths).
 
-Install required packages:
+### Running the Agent
 
-```bash
-agents-cli install
-```
-
-Test the agent with a local web server:
+You can test and interact with the agent locally using the playground:
 
 ```bash
 agents-cli playground
 ```
 
-You can also use features from the [ADK](https://adk.dev/) CLI with `uv run adk`.
+This will launch a local web server (typically on `http://127.0.0.1:8080`) where you can interact with the agent in a chat UI.
 
-## Commands
+### Testing
 
-| Command              | Description                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| `agents-cli install` | Install dependencies using uv                                                         |
-| `agents-cli playground` | Launch local development environment                                                  |
-| `agents-cli lint`    | Run code quality checks                                                               |
-| `agents-cli eval`    | Evaluate agent behavior (generate, grade, analyze, and more — see `agents-cli eval --help`) |
-| `uv run pytest tests/unit tests/integration` | Run unit and integration tests                                                        |
-
-## 🛠️ Project Management
-
-| Command | What It Does |
-|---------|--------------|
-| `agents-cli scaffold enhance` | Add CI/CD pipelines and Terraform infrastructure |
-| `agents-cli infra cicd` | One-command setup of entire CI/CD pipeline + infrastructure |
-| `agents-cli scaffold upgrade` | Auto-upgrade to latest version while preserving customizations |
-
----
-
-## Development
-
-Edit your agent logic in `app/agent.py` and test with `agents-cli playground` - it auto-reloads on save.
-
-## Deployment
+Run the test suite using pytest via uv:
 
 ```bash
-gcloud config set project <your-project-id>
-agents-cli deploy
+uv run pytest tests/unit tests/integration
 ```
-
-To add CI/CD and Terraform, run `agents-cli scaffold enhance`.
-To set up your production infrastructure, run `agents-cli infra cicd`.
-
-## Observability
-
-Built-in telemetry exports to Cloud Trace, BigQuery, and Cloud Logging.
