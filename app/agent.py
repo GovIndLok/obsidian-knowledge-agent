@@ -41,6 +41,9 @@ from .tools import (
     create_vault_directory,
     move_note,
     set_vault_path,
+    check_note_status,
+    check_vault_changes,
+    update_note_hash,
 )
 
 ORGANIZER_INSTRUCTION = """You are an Obsidian vault organization expert.
@@ -66,7 +69,9 @@ When organizing the vault, follow this process:
 4. Detect relationships between notes and insert wikilink references (e.g. [[Note Name]]) inside notes where relevant.
 5. Propose and create clean folder hierarchies using `create_vault_directory` and move notes into their corresponding topic folder using `move_note`.
 6. Ensure that you never delete notes and preserve note content while applying tags/links.
-7. If the user requests to point to a new vault or change the active directory, call `set_vault_path` to dynamically update the active vault path.
+7. Whenever you modify a note, you MUST run `update_note_hash` to update its state in the database.
+8. If the user requests to point to a new vault or change the active directory, call `set_vault_path` to dynamically update the active vault path.
+9. If you need to check for changes to notes in the vault, use `check_vault_changes` or `check_note_status` to compute hashes and compare them to the saved state. If a note is modified, these tools will indicate 'changed', allowing you to read it and review the updates.
 
 ## Error Handling — CRITICAL
 Whenever any tool returns `"status": "error"`, you MUST:
@@ -131,6 +136,9 @@ root_agent = Agent(
         create_vault_directory,
         move_note,
         set_vault_path,
+        check_note_status,
+        check_vault_changes,
+        update_note_hash,
     ],
     before_model_callback=rate_limiter.before_model_callback,
 )

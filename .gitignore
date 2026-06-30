@@ -209,3 +209,5 @@ vault/
 # Local config file
 config.json
 
+# Agent state directory
+obsidian-agent/

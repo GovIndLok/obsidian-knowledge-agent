@@ -14,6 +14,11 @@
 
 import os
 import shutil
+import hashlib
+import json
+import sqlite3
+import datetime
+import uuid
 from pathlib import Path
 
 from google.adk.tools import ToolContext
@@ -277,5 +282,225 @@ def move_note(
             "source": note_path,
             "destination": new_rel_path,
         }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def _get_agent_dir():
+    return Path(__file__).resolve().parent.parent / "obsidian-agent"
+
+
+def _init_agent_dirs():
+    agent_dir = _get_agent_dir()
+    config_dir = agent_dir / "config"
+    state_dir = agent_dir / "state"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    
+    config_toml = config_dir / "config.toml"
+    if not config_toml.exists():
+        config_toml.write_text("")
+        
+    vaults_json = config_dir / "vaults.json"
+    if not vaults_json.exists():
+        vaults_json.write_text("{}")
+        
+    return config_dir, state_dir
+
+
+def _get_vault_db_id(vault_path: Path) -> str:
+    config_dir, _ = _init_agent_dirs()
+    vaults_json = config_dir / "vaults.json"
+    vaults = json.loads(vaults_json.read_text(encoding="utf-8"))
+    
+    vault_key = str(vault_path.resolve())
+    now_iso = datetime.datetime.now().isoformat()
+    
+    if vault_key not in vaults:
+        new_id = uuid.uuid4().hex[:8]
+        vaults[vault_key] = {
+            "id": new_id,
+            "last_opened": now_iso
+        }
+    else:
+        vaults[vault_key]["last_opened"] = now_iso
+        
+    vaults_json.write_text(json.dumps(vaults, indent=2), encoding="utf-8")
+    return vaults[vault_key]["id"]
+
+
+def _get_state_db_path(tool_context: ToolContext | None = None) -> Path:
+    vault_path = _get_vault_path(tool_context)
+    db_id = _get_vault_db_id(vault_path)
+    _, state_dir = _init_agent_dirs()
+    return state_dir / f"{db_id}.sqlite"
+
+
+def _init_sqlite_db(db_path: Path):
+    with sqlite3.connect(db_path) as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS note_state (
+                path TEXT PRIMARY KEY,
+                hash TEXT NOT NULL,
+                last_processed TEXT NOT NULL
+            )
+        ''')
+
+
+def _load_state(db_path: Path) -> dict:
+    _init_sqlite_db(db_path)
+    state = {}
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.execute('SELECT path, hash FROM note_state')
+        for row in cursor:
+            state[row[0]] = row[1]
+    return state
+
+
+def _save_note_state(db_path: Path, path: str, hash_val: str):
+    _init_sqlite_db(db_path)
+    now_iso = datetime.datetime.now().isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute('''
+            INSERT INTO note_state (path, hash, last_processed)
+            VALUES (?, ?, ?)
+            ON CONFLICT(path) DO UPDATE SET
+                hash=excluded.hash,
+                last_processed=excluded.last_processed
+        ''', (path, hash_val, now_iso))
+
+
+def _delete_note_state(db_path: Path, path: str):
+    _init_sqlite_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute('DELETE FROM note_state WHERE path = ?', (path,))
+
+
+def _compute_hash(file_path: Path) -> str:
+    hasher = hashlib.sha256()
+    hasher.update(file_path.read_bytes())
+    return hasher.hexdigest()
+
+
+def check_vault_changes(tool_context: ToolContext | None = None) -> dict:
+    """Checks the entire vault for any changes by computing hashes and comparing with the saved database.
+    
+    Returns lists of 'changed', 'new', and 'deleted' notes. New notes are automatically added to the tracking database.
+    
+    Returns:
+        dict with lists of changed, new, and deleted note paths.
+    """
+    try:
+        vault_path = _get_vault_path(tool_context)
+        db_path = _get_state_db_path(tool_context)
+        state = _load_state(db_path)
+        
+        SKIP_DIRS = {".obsidian", ".trash", ".git", ".adk"}
+        
+        current_notes = {}
+        for root, dirs, files in os.walk(vault_path):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for file in files:
+                if file.endswith(".md"):
+                    full_path = Path(root) / file
+                    rel_path = str(full_path.relative_to(vault_path))
+                    current_notes[rel_path] = full_path
+                    
+        changed = []
+        new = []
+        deleted = []
+        
+        for rel_path, full_path in current_notes.items():
+            current_hash = _compute_hash(full_path)
+            if rel_path not in state:
+                _save_note_state(db_path, rel_path, current_hash)
+                new.append(rel_path)
+            elif state[rel_path] != current_hash:
+                changed.append(rel_path)
+                
+        for rel_path in list(state.keys()):
+            if rel_path not in current_notes:
+                deleted.append(rel_path)
+                
+        return {
+            "status": "success",
+            "changed": changed,
+            "new": new,
+            "deleted": deleted
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def check_note_status(note_path: str, tool_context: ToolContext | None = None) -> dict:
+    """Checks the status of a specific note by computing its hash and comparing it with the saved state.
+    
+    If the note is new (not in database), it will be added to the database automatically.
+    If the note has changed, it will return the status 'changed' so you can look at the changes.
+    If the note is deleted, it will return 'deleted'.
+    
+    Args:
+        note_path: The relative path of the note file.
+        
+    Returns:
+        dict containing 'status', 'note_path', and 'state' ('unchanged', 'changed', 'new', 'deleted').
+    """
+    try:
+        db_path = _get_state_db_path(tool_context)
+        state = _load_state(db_path)
+        
+        target_path = _safe_resolve(note_path, tool_context)
+        
+        if not target_path.exists():
+            if note_path in state:
+                return {"status": "success", "note_path": note_path, "state": "deleted"}
+            else:
+                return {"status": "error", "message": "Note does not exist and is not tracked."}
+                
+        current_hash = _compute_hash(target_path)
+        
+        if note_path not in state:
+            _save_note_state(db_path, note_path, current_hash)
+            return {"status": "success", "note_path": note_path, "state": "new"}
+            
+        saved_hash = state[note_path]
+        
+        if current_hash == saved_hash:
+            return {"status": "success", "note_path": note_path, "state": "unchanged"}
+        else:
+            return {"status": "success", "note_path": note_path, "state": "changed"}
+            
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def update_note_hash(note_path: str, tool_context: ToolContext | None = None) -> dict:
+    """Updates the hash of a note in the state database after a change is made.
+    If the note has been deleted, its entry in the state database is also deleted.
+    
+    Run this tool after every change made to a note.
+    
+    Args:
+        note_path: The relative path of the note file.
+        
+    Returns:
+        dict indicating success or failure.
+    """
+    try:
+        db_path = _get_state_db_path(tool_context)
+        state = _load_state(db_path)
+        
+        target_path = _safe_resolve(note_path, tool_context)
+        
+        if not target_path.exists():
+            if note_path in state:
+                _delete_note_state(db_path, note_path)
+            return {"status": "success", "message": f"Note '{note_path}' deleted from tracking."}
+            
+        current_hash = _compute_hash(target_path)
+        _save_note_state(db_path, note_path, current_hash)
+        
+        return {"status": "success", "message": f"Hash updated for '{note_path}'."}
+        
     except Exception as e:
         return {"status": "error", "message": str(e)}
