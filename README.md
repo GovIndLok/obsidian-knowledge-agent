@@ -1,4 +1,4 @@
-# Obsidian Organizer Agent 🗂️✨
+# Obsidian Knowledge Agent 🗂️✨
 
 [![Agent Framework: Google ADK](https://img.shields.io/badge/ADK-v2.0-blue)](https://adk.dev/)
 [![LLM: Gemini](https://img.shields.io/badge/Model-Gemini%20gemma--4--26b-orange)](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/models)
@@ -36,7 +36,7 @@ Personal knowledge bases, such as Obsidian vaults, suffer from "content entropy.
 
 ## 💡 The Solution
 
-The **Obsidian Organizer Agent** acts as an expert local librarian. Running locally via ADK and executing tools through a secure, sandbox-aware environment:
+The **Obsidian Knowledge Agent** acts as an expert local librarian. Running locally via ADK and executing tools through a secure, sandbox-aware environment:
 1. **Scans** the active vault to discover all notes.
 2. **Tracks state changes** dynamically by storing SHA-256 content hashes in a SQLite database to prevent redundant re-processing.
 3. **Analyzes content** statically and through Gemini to group related thoughts, resolve connections, and detect duplicate or missing concepts.
@@ -153,7 +153,7 @@ def safe_resolve(relative_path: str, tool_context: ToolContext | None = None) ->
 ### Installation Steps
 1. **Clone the repository**:
    ```bash
-   git clone <GITHUB_REPO_URL>
+   git clone https://github.com/GovIndLok/obsidian-knowledge-agent
    cd obsidian-organizer
    ```
 
@@ -193,6 +193,28 @@ Run a quick smoke test or command against the agent:
 ```bash
 agents-cli run "List the notes in my vault"
 ```
+
+### Running with Docker (Optional Convenience)
+
+> [!IMPORTANT]
+> The **primary and intended** way to run the Obsidian Knowledge Agent is **locally on the host machine** as described above. 
+> 
+> Running via Docker is provided solely as an optional convenience to execute the web server without installing local Python dependencies or setup tools. Because the agent works directly on local files, you **must mount your local vault** into the container using a Docker volume so that the containerized agent can access your notes.
+
+1. **Build the Docker Image**:
+   ```bash
+   docker build -t obsidian-organizer .
+   ```
+
+2. **Run the Container**:
+   Pass your local `.env` variables and mount your vault folder as a volume using the `-v` flag:
+   ```bash
+   docker run -p 8080:8080 \
+     --env-file .env \
+     -v /absolute/path/to/your/local/vault:/vault \
+     -e OBSIDIAN_VAULT_PATH=/vault \
+     obsidian-organizer
+   ```
 
 ---
 
