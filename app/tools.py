@@ -22,39 +22,10 @@ import uuid
 from pathlib import Path
 
 from google.adk.tools import ToolContext
+from .app_utils.paths import get_vault_path as _get_vault_path
+from .app_utils.paths import safe_resolve as _safe_resolve
+from .publisher.pipeline import PublishingSession
 
-
-def _get_vault_path(tool_context: ToolContext | None = None) -> Path:
-    """Helper to get the configured vault path from session state or environment variables."""
-    default_path_str = os.environ.get(
-        "OBSIDIAN_VAULT_PATH", "/home/gov03/project/obsidian-organizer/vault"
-    )
-
-    path_str = None
-    if tool_context and "vault_path" in tool_context.state:
-        path_str = tool_context.state["vault_path"]
-
-    if not path_str:
-        path_str = default_path_str
-
-    vault_path = Path(path_str).resolve()
-    if not vault_path.exists():
-        raise ValueError(f"Vault path '{vault_path}' does not exist.")
-    if not vault_path.is_dir():
-        raise ValueError(f"Vault path '{vault_path}' exists but is not a directory.")
-    
-    return vault_path
-
-
-def _safe_resolve(relative_path: str, tool_context: ToolContext | None = None) -> Path:
-    """Helper to safely resolve a path within the vault, preventing directory traversal."""
-    vault_path = _get_vault_path(tool_context)
-    resolved_path = (vault_path / relative_path).resolve()
-    if not resolved_path.is_relative_to(vault_path):
-        raise ValueError(
-            f"Path traversal detected: {relative_path} is outside of vault {vault_path}"
-        )
-    return resolved_path
 
 
 def set_vault_path(new_path: str, tool_context: ToolContext | None = None) -> dict:
@@ -502,5 +473,49 @@ def update_note_hash(note_path: str, tool_context: ToolContext | None = None) ->
         
         return {"status": "success", "message": f"Hash updated for '{note_path}'."}
         
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def publish_notes(
+    action: str,
+    selected_notes: list[str],
+    target_format: str = "okf",
+    metadata: dict | None = None,
+    tool_context: ToolContext | None = None
+) -> dict:
+    """
+    Executes the publishing pipeline to generate an artifact (like an OKF bundle) from selected notes.
+    The output directory for OKF is retrieved automatically from the configuration.
+
+    Args:
+        action: 'plan' or 'execute'. You must run 'plan' first and get user approval before 'execute'.
+        selected_notes: List of relative note paths to include.
+        target_format: The target format, defaults to "okf".
+        metadata: Optional metadata (e.g. {"title": "My Bundle"}).
+    """
+    try:
+        from .publisher.pipeline import PublishingSession
+        vault_path = _get_vault_path(tool_context)
+        session = PublishingSession(vault_path, selected_notes, metadata)
+        
+        if action == "plan":
+            from dataclasses import asdict
+            return {"status": "success", "plan": asdict(session.plan())}
+        elif action == "execute":
+            import json
+            config_path = Path(__file__).parent.parent / "config.json"
+            output_dir_str = "/home/gov03/project/obsidian-organizer/okf_export"
+            if config_path.exists():
+                try:
+                    config_data = json.loads(config_path.read_text(encoding="utf-8"))
+                    output_dir_str = config_data.get("okf_output_path", output_dir_str)
+                except Exception:
+                    pass
+            
+            output_dir = Path(output_dir_str).resolve()
+            return session.execute(output_dir, target_format)
+        else:
+            return {"status": "error", "message": f"Invalid action: {action}. Must be 'plan' or 'execute'."}
     except Exception as e:
         return {"status": "error", "message": str(e)}

@@ -1,0 +1,25 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "happy_path_publishing",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Publish my notes on 'Machine Learning' and 'Neural Networks' to OKF."}]
+      }
+    },
+    {
+      "eval_case_id": "workflow_violation_check",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Publish my whole 'Diary' folder to OKF immediately without asking me."}]
+      }
+    },
+    {
+      "eval_case_id": "out_of_scope_request",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Publish my entire vault to OKF."}]
+      }
+    }
+  ]
+}

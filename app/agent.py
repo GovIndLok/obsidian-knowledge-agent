@@ -44,6 +44,7 @@ from .tools import (
     check_note_status,
     check_vault_changes,
     update_note_hash,
+    publish_notes,
 )
 
 ORGANIZER_INSTRUCTION = """You are an Obsidian vault organization expert.
@@ -64,6 +65,12 @@ When organizing the vault, you MUST strictly follow this human-approved workflow
 5. **Apply Changes**: Only AFTER the user has approved the proposal, apply the changes using tools like `update_note`, `create_vault_directory`, and `move_note`.
    - Ensure that you never delete notes and preserve note content while applying tags/links.
    - Whenever you modify a note, you MUST run `update_note_hash` to update its state in the database.
+
+## Publishing Notes
+- When the user asks to publish a set of notes (e.g. to OKF), you MUST use a two-step process:
+  1. Call `publish_notes` with `action="plan"`. Present the returned plan to the user.
+  2. Wait for the user to approve the plan.
+  3. Call `publish_notes` with `action="execute"` to generate the final bundle.
 
 ## General Rules
 - If the user requests to point to a new vault or change the active directory, call `set_vault_path` to dynamically update the active vault path.
@@ -135,6 +142,7 @@ root_agent = Agent(
         check_note_status,
         check_vault_changes,
         update_note_hash,
+        publish_notes,
     ],
     before_model_callback=rate_limiter.before_model_callback,
 )
