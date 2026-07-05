@@ -5,7 +5,7 @@ from google.adk.tools import ToolContext
 def get_vault_path(tool_context: ToolContext | None = None) -> Path:
     """Helper to get the configured vault path from session state or environment variables."""
     default_path_str = os.environ.get(
-        "OBSIDIAN_VAULT_PATH", "/home/gov03/project/obsidian-organizer/vault"
+        "OBSIDIAN_VAULT_PATH", str(Path(__file__).resolve().parent.parent.parent / "vault")
     )
 
     path_str = None

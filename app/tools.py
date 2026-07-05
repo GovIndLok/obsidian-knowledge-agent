@@ -45,7 +45,7 @@ def set_vault_path(new_path: str, tool_context: ToolContext | None = None) -> di
         current_path = str(_get_vault_path(tool_context))
     except Exception:
         current_path = os.environ.get(
-            "OBSIDIAN_VAULT_PATH", "/home/gov03/project/obsidian-organizer/vault"
+            "OBSIDIAN_VAULT_PATH", str(Path(__file__).resolve().parent.parent / "vault")
         )
 
     try:
@@ -505,7 +505,7 @@ def publish_notes(
         elif action == "execute":
             import json
             config_path = Path(__file__).parent.parent / "config.json"
-            output_dir_str = "/home/gov03/project/obsidian-organizer/okf_export"
+            output_dir_str = str(Path(__file__).resolve().parent.parent / "okf_export")
             if config_path.exists():
                 try:
                     config_data = json.loads(config_path.read_text(encoding="utf-8"))

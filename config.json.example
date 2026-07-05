@@ -1,0 +1,4 @@
+{
+  "default_vault_path": "/absolute/path/to/your/obsidian/vault",
+  "okf_output_path": "/absolute/path/to/export/okf_bundles"
+}

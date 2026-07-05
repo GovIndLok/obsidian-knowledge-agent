@@ -294,12 +294,17 @@ async def main() -> None:
         dataset = json.load(f)
 
     success = True
-    for case in dataset.get("eval_cases", []):
-        scenario_name = case.get("eval_case_id", "unknown")
-        prompt = case.get("prompt", {}).get("parts", [{}])[0].get("text", "")
-        passed = await evaluate_scenario(scenario_name, prompt)
-        if not passed:
-            success = False
+    try:
+        for case in dataset.get("eval_cases", []):
+            scenario_name = case.get("eval_case_id", "unknown")
+            prompt = case.get("prompt", {}).get("parts", [{}])[0].get("text", "")
+            passed = await evaluate_scenario(scenario_name, prompt)
+            if not passed:
+                success = False
+    finally:
+        import shutil
+        if SANDBOX_VAULT.exists():
+            shutil.rmtree(SANDBOX_VAULT, ignore_errors=True)
 
     if not success:
         print("\n❌ Contract verification failed for one or more evaluation scenarios.")

@@ -164,10 +164,17 @@ def safe_resolve(relative_path: str, tool_context: ToolContext | None = None) ->
    *(This creates a `.venv` using `uv` and installs packages from `pyproject.toml`)*
 
 3. **Configure Environment Variables**:
-   Create a `.env` file in the project root:
+   Copy the example environment file and edit it to include your Gemini API key:
    ```bash
-   export GOOGLE_API_KEY="your-api-key"
-   export GOOGLE_GENAI_USE_ENTERPRISE=FALSE
+   cp .env.example .env
+   # Edit .env to add your actual GOOGLE_API_KEY
+   ```
+
+4. **Configure Vault Paths**:
+   Copy the example configuration file and edit the paths to point to your Obsidian vault:
+   ```bash
+   cp config.json.example config.json
+   # Edit config.json with your desired local directory paths
    ```
 
 ---
