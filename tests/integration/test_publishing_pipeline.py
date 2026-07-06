@@ -28,7 +28,7 @@ def test_publishing_pipeline_end_to_end(tmp_path: Path):
     
     # Verify outputs
     assert (output_dir / "index.md").exists()
-    assert (output_dir / "notes" / "note1.md").exists()
+    assert (output_dir / "note1.md").exists()
 
 def test_publishing_pipeline_validation_failure(tmp_path: Path):
     vault_path = tmp_path / "vault"
@@ -70,7 +70,7 @@ def test_publish_notes_tool(tmp_path: Path):
         assert result_plan["plan"]["title"] == "Tool Test"
         
         # Test execute action
-        with patch("app.tools.PublishingSession") as MockSession:
+        with patch("app.publisher.pipeline.PublishingSession") as MockSession:
             session_instance = MockSession.return_value
             session_instance.execute.return_value = {"status": "success", "validation": {"valid": True}, "output_dir": "/mock/out"}
             

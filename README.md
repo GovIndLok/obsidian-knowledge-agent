@@ -6,7 +6,7 @@
 [![Tool: uv](https://img.shields.io/badge/Package%20Manager-uv-purple)](https://github.com/astral-sh/uv)
 [![Testing: pytest](https://img.shields.io/badge/Tests-pytest-green)](https://docs.pytest.org/)
 
-An enterprise-grade, ReAct-based AI agent designed to automatically organize scattered markdown vaults in [Obsidian](https://obsidian.md/). Powered by the **Google Agent Development Kit (ADK)** and Gemini, the agent analyzes notes, extracts concepts, establishes hierarchical folder structures, connects documents via wikilinks, tracks vault state changes via SQLite hashing, and packages notes into a standardized **Open Knowledge Format (OKF)** publication bundle.
+A ReAct-based AI agent designed to automatically organize scattered markdown vaults in [Obsidian](https://obsidian.md/). Powered by the **Google Agent Development Kit (ADK)** and Gemini, the agent analyzes notes, extracts concepts, establishes hierarchical folder structures, connects documents via wikilinks, tracks vault state changes via SQLite hashing, and packages notes into a standardized **Open Knowledge Format (OKF)** publication bundle.
 
 ---
 
